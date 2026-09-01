@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="sq">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<link rel="manifest" href="manifest.json">
+<title>Taxi 2T</title>
+
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#111827;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif;color:#111827}
+.app{min-height:100svh;background:#e9eef2}
+.map{height:45svh;min-height:330px;position:relative;background:#dce5e8}
+.map iframe{width:100%;height:100%;border:0}
+.top{position:absolute;top:calc(14px + env(safe-area-inset-top));left:15px;right:15px;display:flex;justify-content:space-between;pointer-events:none}
+.badge{background:#fff;padding:10px 14px;border-radius:16px;box-shadow:0 4px 18px #0002;font-weight:800}
+.gps{pointer-events:auto;border:0;background:#fff;border-radius:50%;width:44px;height:44px;box-shadow:0 4px 18px #0002;font-size:19px}
+.pin{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;background:#111827;border:5px solid white;box-shadow:0 3px 12px #0004}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:white;border-radius:28px 28px 0 0;padding:19px 17px calc(17px + env(safe-area-inset-bottom));box-shadow:0 -7px 25px #0002;max-height:68svh;overflow:auto}
+.handle{width:42px;height:5px;background:#d9dde2;border-radius:10px;margin:0 auto 14px}
+.brand{display:flex;align-items:center;gap:9px}
+.logo{width:36px;height:36px;border-radius:11px;background:#111827;color:white;display:grid;place-items:center}
+.brand h1{font-size:22px;margin:0}
+.tag{font-size:12px;color:#7b8490;margin:2px 0 14px 45px}
+.field{border:1px solid #e1e6eb;border-radius:15px;padding:10px 13px;margin:7px 0;background:#fafbfc}
+.field small{display:block;color:#7c8792;font-size:10px}
+.field input{border:0;outline:0;background:transparent;width:100%;font-size:15px;padding-top:3px}
+h3{font-size:13px;margin:14px 2px 8px}
+.options{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.opt{border:1.5px solid #e2e6ea;background:#fff;border-radius:14px;padding:11px;text-align:left;font-size:14px}
+.opt.active{border-color:#111827;background:#f0f2f5;font-weight:800}
+.muted{display:block;font-size:10px;color:#7c8792;margin-top:2px;font-weight:500}
+.row{display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding:12px 3px;border-top:1px solid #eef0f2}
+.fare{font-size:14px}
+.fare b{font-size:19px}
+.cta{width:100%;border:0;background:#111827;color:white;border-radius:16px;padding:15px;font-size:15px;font-weight:800}
+.cta:disabled{opacity:.6}
+.status{display:none;margin-top:10px;background:#f1f5f7;border-radius:14px;padding:12px;text-align:center;font-size:13px}
+.status.show{display:block}
+.success{background:#ecfdf3;color:#166534}
+.error{background:#fef2f2;color:#991b1b}
+</style>
+</head>
+
+<body>
+
+<div class="app">
+
+<div class="map">
+
+<iframe
+title="Harta e Tiranës"
+src="https://www.openstreetmap.org/export/embed.html?bbox=19.78%2C41.29%2C19.88%2C41.35&layer=mapnik&marker=41.3275%2C19.8187">
+</iframe>
+
+<div class="top">
+<div class="badge">🚕 Taxi 2T</div>
+<button class="gps" id="gps">📍</button>
+</div>
+
+<div class="pin"></div>
+
+</div>
+
+<section class="sheet">
+
+<div class="handle"></div>
+
+<div class="brand">
+<div class="logo">🚕</div>
+<h1>Taxi 2T</h1>
+</div>
+
+<div class="tag">Your ride. Your way.</div>
+
+<div class="field">
+<small>📍 NGA</small>
+<input id="from" value="Vendndodhja ime">
+</div>
+
+<div class="field">
+<small>📍 PËR NË</small>
+<input id="to" placeholder="Ku po shkon?">
+</div>
+
+<h3>Zgjidh kategorinë</h3>
+
+<div class="options">
+
+<button class="opt active" data-g="cat" data-v="Economy">
+🚕 Economy
+<span class="muted">Standard</span>
+</button>
+
+<button class="opt" data-g="cat" data-v="Premium">
+⭐ Premium
+<span class="muted">Komoditet ekstra</span>
+</button>
+
+</div>
+
+<h3>Pagesa</h3>
+
+<div class="options">
+
+<button class="opt active" data-g="pay" data-v="cash">
+💵 Cash
+</button>
+
+<button class="opt" data-g="pay" data-v="card">
+💳 Card
+</button>
+
+</div>
+
+<div class="row">
+<span class="fare">Tarifa e parashikuar</span>
+<span class="fare"><b id="price">300 Lek</b></span>
+</div>
+
+<button class="cta" id="request">
+KËRKO TAXI
+</button>
+
+<div class="status" id="status"></div>
+
+</section>
+</div>
+
+
+<script>
+
+const SUPABASE_URL =
+"https://rgfpycflvjuuuerriqsn.supabase.co";
+
+const SUPABASE_KEY =
+"VENDOS_PUBLISHABLE_KEY_KETU";
+
+
+let cat = "Economy";
+let pay = "cash";
+
+let latitude = 41.3275;
+let longitude = 19.8187;
+
+let currentRideId = null;
+
+
+async function supabaseRequest(path, options = {}) {
+
+const response = await fetch(
+SUPABASE_URL + "/rest/v1/" + path,
+{
+...options,
+
+headers:{
+"apikey":SUPABASE_KEY,
+"Authorization":"Bearer " + SUPABASE_KEY,
+"Content-Type":"application/json",
+"Prefer":"return=representation"
+}
+});
+
+const text = await response.text();
+
+let data;
+
+try{
+data = text ? JSON.parse(text) : null;
+}catch{
+data = text;
+}
+
+if(!response.ok){
+
+console.error(data);
+
+throw new Error(
+data?.message ||
+data?.error_description ||
+"Gabim me Supabase."
+);
+
+}
+
+return data;
+}
+
+
+async function getClient(){
+
+let saved =
+localStorage.getItem("taxi2t_client_id");
+
+if(saved){
+
+try{
+
+const existing =
+await supabaseRequest(
+"users?id=eq." +
+encodeURIComponent(saved) +
+"&select=id,name,phone,email,role"
+);
+
+if(existing && existing.length){
+return existing[0];
+}
+
+}catch(e){
+
+console.log("Po krijojmë klient të ri.");
+
+}
+
+}
+
+
+const client =
+await supabaseRequest(
+"users",
+{
+method:"POST",
+
+body:JSON.stringify({
+
+name:"Klient Taxi 2T",
+role:"client"
+
+})
+});
+
+if(!client || !client[0]){
+throw new Error("Nuk u krijua klienti.");
+}
+
+localStorage.setItem(
+"taxi2t_client_id",
+client[0].id
+);
+
+return client[0];
+}
+
+
+document.querySelectorAll(".opt").forEach(button=>{
+
+button.onclick=()=>{
+
+const group=button.dataset.g;
+
+if(group==="cat"){
+cat=button.dataset.v;
+}
+
+if(group==="pay"){
+pay=button.dataset.v;
+}
+
+document
+.querySelectorAll('[data-g="'+group+'"]')
+.forEach(x=>x.classList.remove("active"));
+
+button.classList.add("active");
+
+calculatePrice();
+
+};
+
+});
+
+
+function calculatePrice(){
+
+const price =
+cat==="Premium" ? 500 : 300;
+
+document.getElementById("price")
+.textContent=price+" Lek";
+
+return price;
+}
+
+
+document.getElementById("gps").onclick=()=>{
+
+if(!navigator.geolocation){
+
+alert("GPS nuk mbështetet.");
+
+return;
+}
+
+navigator.geolocation.getCurrentPosition(
+
+position=>{
+
+latitude =
+position.coords.latitude;
+
+longitude =
+position.coords.longitude;
+
+document.getElementById("from").value =
+"Vendndodhja ime ("+
+latitude.toFixed(5)+
+", "+
+longitude.toFixed(5)+
+")";
+
+},
+
+()=>{
+
+alert(
+"Nuk mundëm të marrim vendndodhjen. Lejo Location."
+);
+
+},
+
+{
+enableHighAccuracy:true,
+timeout:10000,
+maximumAge:0
+}
+
+);
+
+};
+
+
+function showStatus(message,type=""){
+
+const status =
+document.getElementById("status");
+
+status.className =
+"status show "+type;
+
+status.innerHTML=message;
+
+}
+
+
+document.getElementById("request").onclick =
+async event=>{
+
+event.preventDefault();
+
+const button =
+document.getElementById("request");
+
+const from =
+document.getElementById("from")
+.value.trim();
+
+const to =
+document.getElementById("to")
+.value.trim();
+
+
+if(!to){
+
+alert("📍 Shkruaj destinacionin.");
+
+return;
+}
+
+
+const estimatedFare =
+calculatePrice();
+
+button.disabled=true;
+
+button.textContent =
+"⏳ Duke kërkuar...";
+
+showStatus(
+"🚕 <b>Po dërgojmë kërkesën...</b>"
+);
+
+
+try{
+
+const client =
+await getClient();
+
+
+const ride =
+await supabaseRequest(
+"ride_requests",
+{
+method:"POST",
+
+body:JSON.stringify({
+
+client_id:client.id,
+
+pickup_address:from,
+
+pickup_latitude:latitude,
+
+pickup_longitude:longitude,
+
+destination_address:to,
+
+destination_latitude:latitude,
+
+destination_longitude:longitude,
+
+category:cat,
+
+payment_method:pay,
+
+estimated_fare:estimatedFare,
+
+status:"pending"
+
+})
+}
+);
+
+
+if(!ride || !ride[0]){
+
+throw new Error(
+"Kërkesa nuk u ruajt."
+);
+
+}
+
+
+currentRideId =
+ride[0].id;
+
+localStorage.setItem(
+"taxi2t_current_ride",
+currentRideId
+);
+
+
+showStatus(
+
+"🚕 <b>Kërkesa u dërgua!</b>"+
+"<br>"+
+cat+
+" · "+
+(pay==="cash"?"Cash":"Card")+
+" · "+
+to+
+"<br><br>"+
+"⏳ Po presim shoferin..."+
+"<br>"+
+"<button id='cancel' "+
+"style='margin-top:10px;border:0;background:white;padding:8px 14px;border-radius:10px'>"+
+"Anulo kërkesën"+
+"</button>",
+
+"success"
+
+);
+
+
+document.getElementById("cancel")
+.onclick=cancelRide;
+
+
+}catch(error){
+
+console.error(error);
+
+showStatus(
+
+"❌ <b>Nuk u dërgua kërkesa.</b>"+
+"<br>"+
+error.message,
+
+"error"
+
+);
+
+}finally{
+
+button.disabled=false;
+
+button.textContent =
+"KËRKO TAXI";
+
+}
+
+};
+
+
+async function cancelRide(){
+
+if(!currentRideId){
+
+return;
+}
+
+try{
+
+await supabaseRequest(
+
+"ride_requests?id=eq."+
+encodeURIComponent(currentRideId),
+
+{
+method:"PATCH",
+
+body:JSON.stringify({
+status:"cancelled"
+})
+
+}
+
+);
+
+currentRideId=null;
+
+localStorage.removeItem(
+"taxi2t_current_ride"
+);
+
+showStatus(
+"✅ Kërkesa u anulua.",
+"success"
+);
+
+}catch(error){
+
+showStatus(
+"❌ Nuk mundëm ta anulojmë kërkesën.",
+"error"
+);
+
+}
+
+}
+
+
+calculatePrice();
+
+
+if("serviceWorker" in navigator){
+
+window.addEventListener(
+"load",
+()=>{
+
+navigator.serviceWorker
+.register("./service-worker.js")
+.catch(error=>{
+console.log(error);
+});
+
+}
+);
+
+}
+
+</script> const SUPABASE_KEY = "sb_publishable_RWSWEBblifiRcZYWCQJPCA_rybIG33i";
+
+</body>
+</html>
