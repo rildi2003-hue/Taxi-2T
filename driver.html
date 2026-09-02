@@ -1,1 +1,321 @@
+<!DOCTYPE html>
+<html lang="sq">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Taxi 2T - Shoferi</title>
 
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      color: #222;
+    }
+
+    header {
+      background: #111;
+      color: #fff;
+      padding: 20px;
+      text-align: center;
+    }
+
+    h1 {
+      margin: 0;
+    }
+
+    .status {
+      margin-top: 10px;
+      color: #22c55e;
+      font-weight: bold;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: 20px auto;
+      padding: 0 15px;
+    }
+
+    .request {
+      background: white;
+      border-radius: 15px;
+      padding: 18px;
+      margin-bottom: 15px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+    }
+
+    .request h3 {
+      margin-top: 0;
+    }
+
+    .info {
+      margin: 8px 0;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 10px;
+      background: #f5c400;
+      color: #111;
+      font-size: 17px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+
+    button:hover {
+      background: #e5b600;
+    }
+
+    .refresh {
+      background: #111;
+      color: white;
+      margin-bottom: 20px;
+    }
+
+    .empty {
+      background: white;
+      padding: 25px;
+      border-radius: 15px;
+      text-align: center;
+    }
+
+    .error {
+      background: #fee2e2;
+      color: #991b1b;
+      padding: 15px;
+      border-radius: 10px;
+      margin-bottom: 15px;
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  <h1>🚕 Taxi 2T</h1>
+  <div class="status">🟢 Shoferi Online</div>
+</header>
+
+<div class="container">
+
+  <button class="refresh" onclick="loadRequests()">
+    🔄 Rifresko kërkesat
+  </button>
+
+  <div id="message"></div>
+  <div id="requests"></div>
+
+</div>
+
+<script>
+
+const SUPABASE_URL =
+  "https://rgfpycflvjuuuerriqsn.supabase.co";
+
+const SUPABASE_KEY =
+  "sb_publishable_RWSWEBblifiRcZYWCQJPCA_rybIG33i";
+
+async function supabaseRequest(path, options = {}) {
+
+  const headers = {
+    "apikey": SUPABASE_KEY,
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+    ...options.headers
+  };
+
+  const response = await fetch(
+    SUPABASE_URL + "/rest/v1/" + path,
+    {
+      ...options,
+      headers
+    }
+  );
+
+  const text = await response.text();
+
+  if (!response.ok) {
+    throw new Error(
+      "HTTP " + response.status + ": " + text
+    );
+  }
+
+  return text ? JSON.parse(text) : null;
+}
+
+
+async function loadRequests() {
+
+  const requestsDiv =
+    document.getElementById("requests");
+
+  const message =
+    document.getElementById("message");
+
+  requestsDiv.innerHTML = "";
+  message.innerHTML = "";
+
+  try {
+
+    const requests = await supabaseRequest(
+      "ride_requests?status=eq.pending&order=created_at.desc"
+    );
+
+    if (!requests || requests.length === 0) {
+
+      requestsDiv.innerHTML = `
+        <div class="empty">
+          🚕 Nuk ka kërkesa të reja për momentin.
+        </div>
+      `;
+
+      return;
+    }
+
+    requests.forEach(request => {
+
+      const card =
+        document.createElement("div");
+
+      card.className = "request";
+
+      card.innerHTML = `
+        <h3>🚕 Kërkesë e re</h3>
+
+        <div class="info">
+          📍 <strong>Nisja:</strong><br>
+          ${escapeHtml(request.pickup_address)}
+        </div>
+
+        <div class="info">
+          🏁 <strong>Destinacioni:</strong><br>
+          ${escapeHtml(request.destination_address)}
+        </div>
+
+        <div class="info">
+          🚗 <strong>Kategoria:</strong>
+          ${escapeHtml(request.category)}
+        </div>
+
+        <div class="info">
+          💳 <strong>Pagesa:</strong>
+          ${request.payment_method === "cash"
+            ? "💵 Cash"
+            : "💳 Kartë"}
+        </div>
+
+        ${
+          request.estimated_fare
+          ? `
+            <div class="info">
+              💰 <strong>Vlera:</strong>
+              ${request.estimated_fare} Lekë
+            </div>
+          `
+          : ""
+        }
+
+        <button onclick="acceptRequest('${request.id}')">
+          ✅ Prano kërkesën
+        </button>
+      `;
+
+      requestsDiv.appendChild(card);
+
+    });
+
+  } catch (error) {
+
+    message.innerHTML = `
+      <div class="error">
+        ❌ Gabim:<br>
+        ${escapeHtml(error.message)}
+      </div>
+    `;
+
+  }
+}
+
+
+async function acceptRequest(requestId) {
+
+  try {
+
+    /*
+      Për momentin përdorim ID-në e parë
+      të një shoferi nga tabela drivers.
+    */
+
+    const drivers = await supabaseRequest(
+      "drivers?select=id&limit=1"
+    );
+
+    if (!drivers || drivers.length === 0) {
+
+      alert(
+        "Nuk ka ende shofer të regjistruar në Taxi 2T."
+      );
+
+      return;
+    }
+
+    const driverId = drivers[0].id;
+
+    await supabaseRequest(
+      "ride_requests?id=eq." + requestId,
+      {
+        method: "PATCH",
+
+        headers: {
+          "Prefer": "return=minimal"
+        },
+
+        body: JSON.stringify({
+          driver_id: driverId,
+          status: "accepted",
+          accepted_at: new Date().toISOString()
+        })
+      }
+    );
+
+    alert("✅ Kërkesa u pranua!");
+
+    loadRequests();
+
+  } catch (error) {
+
+    alert(
+      "❌ Nuk u pranua kërkesa.\n\n" +
+      error.message
+    );
+
+  }
+}
+
+
+function escapeHtml(text) {
+
+  if (text === null || text === undefined) {
+    return "";
+  }
+
+  return String(text)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+
+loadRequests();
+
+setInterval(loadRequests, 10000);
+
+</script>
+
+</body>
+</html>
